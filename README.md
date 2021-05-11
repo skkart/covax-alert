@@ -1,1 +1,3 @@
 # covax-alert
+
+TEST
