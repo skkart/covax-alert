@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import PropTypes from "prop-types";
 import endpoints from './endpoints';
@@ -6,20 +6,28 @@ import axios from 'axios';
 import './Preferences.css';
 
 
-function Preferences({setUserSetting}) {
+function Preferences({ setUserSetting }) {
+    const [timer, setTimer] = useState(null);
+    const [refreshCount, setRefreshCount] = useState(0);
     const [stateList, setStateList] = useState(window.stateList);
     const [districtList, setDistrictList] = useState(window.districtList);
     const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm();
     const watchAllFields = watch();
     const watchSearchBy = watch("SEARCH_BY");
     const watchStateBy = watch("State");
-    console.log(watchAllFields);
+    const watchAge45 = watch("AGE_45");
+    const watchAge18 = watch("AGE_18");
+    const watchCovishield = watch("Covishield");
+    const watchCovaxin = watch("Covaxin");
+    const watchFree = watch("Free");
+    const watchPaid = watch("Paid");
+    const submitRef = useRef(null);
 
+    
     const onPrefSubmit = (dt) => {
         const { State, District, PIN, SEARCH_BY, Paid, Free, Covishield, Covaxin, AGE_18, AGE_45 } = dt;
         const userData = {};
         if (SEARCH_BY && (PIN || District)) {
-            console.log("submit", dt);
             sessionStorage.clear();
             sessionStorage.setItem('SEARCH_BY', SEARCH_BY);
             userData.searchBy = SEARCH_BY;
@@ -50,18 +58,26 @@ function Preferences({setUserSetting}) {
             userData.age_18 = AGE_18;
             sessionStorage.setItem('AGE_45', AGE_45);
             userData.age_45 = AGE_45;
+            userData.refreshCount = refreshCount;
 
             setUserSetting(userData);
         }
-       
+
+        if (timer) {
+            clearTimeout(timer);
+        }
+
+        setTimer(setTimeout(() => {
+            setRefreshCount(ct => ct + 1);
+            submitRef.current && submitRef.current.click();
+          }, 10000));
+
     };
 
     useLayoutEffect(() => {
-        console.log("useLayoutEffect")
         const srcBy = sessionStorage.getItem('SEARCH_BY');
         setTimeout(() => {
             if (srcBy) {
-                console.log("useLayoutEffect srcBy")
                 setValue("SEARCH_BY", srcBy, {
                     shouldValidate: true,
                     shouldDirty: true
@@ -126,6 +142,8 @@ function Preferences({setUserSetting}) {
                     });
                 }
             }
+
+            submitRef.current && submitRef.current.click();
         }, 500)
     }, []);
 
@@ -133,10 +151,8 @@ function Preferences({setUserSetting}) {
         if (watchSearchBy === "DISTRICT") {
             if (!stateList || !stateList.length) {
                 async function fetchStateList() {
-                    console.log("Fetch state")
                     const stateApiUrl = `${endpoints.cowinApi}/v2/admin/location/states`;
                     const resp = await axios.get(stateApiUrl);
-                    console.log(resp);
                     if (resp.data && resp.data.states) {
                         window.stateList = resp.data.states;
                         setStateList(window.stateList);
@@ -160,10 +176,8 @@ function Preferences({setUserSetting}) {
         if (stateList.length && watchStateBy) {
             async function fetchDistList() {
                 const stateObj = stateList.find(st => st.state_name === watchStateBy);
-                console.log("Fetch district")
                 const distApiUrl = `${endpoints.cowinApi}/v2/admin/location/districts/${stateObj.state_id}`;
                 const resp = await axios.get(distApiUrl);
-                console.log(resp);
                 if (resp.data && resp.data.districts) {
                     window.districtList = resp.data.districts;
                     setDistrictList(window.districtList);
@@ -173,13 +187,20 @@ function Preferences({setUserSetting}) {
                             shouldValidate: true,
                             shouldDirty: true
                         });
+                        submitRef.current && submitRef.current.click();
                     }, 500);
                 }
             }
             fetchDistList();
         }
 
-    }, [stateList, watchStateBy])
+    }, [stateList, watchStateBy]);
+
+    useLayoutEffect(() => {
+        console.log("Filter updated")
+        submitRef.current && submitRef.current.click();
+    }, [watchAge18, watchAge45, watchCovaxin, watchCovishield, watchFree, watchPaid]);
+
 
     return (
         <div>
@@ -199,6 +220,7 @@ function Preferences({setUserSetting}) {
                             <label>Enter your PIN&nbsp;
                             <input type="text" placeholder="PIN" {...register("PIN", { required: true, maxLength: 100 })} />
                             </label>
+                            <input className="searchButton" type="submit" ref={submitRef} value="Search"/>
                         </div>
                     )
                 }
@@ -219,6 +241,7 @@ function Preferences({setUserSetting}) {
                                     }
                                 </select>
                             </label>
+                            <input className="searchButton" type="submit" ref={submitRef} value="Search"/>
                         </div>
                     )
                 }
@@ -226,29 +249,27 @@ function Preferences({setUserSetting}) {
                 {
                     watchAllFields.SEARCH_BY && (
                         <div className="preferenceBlock">
-                            <label>18+
-                                <input type="checkbox" placeholder="18+" {...register("AGE_18", {})} />
+                            <label>
+                                <input className="badgeCheckbox" type="checkbox" placeholder="18+" {...register("AGE_18", {})} /><span>18+</span>
                             </label>
-                            <label>45+
-                                <input type="checkbox" placeholder="45+" {...register("AGE_45", {})} />
+                            <label>
+                                <input className="badgeCheckbox" type="checkbox" placeholder="45+" {...register("AGE_45", {})} /><span>45+</span>
                             </label>
-                            <label>Covishield
-                                <input type="checkbox" placeholder="Covishield" {...register("Covishield", {})} />
+                            <label>
+                                <input className="badgeCheckbox" type="checkbox" placeholder="Covishield" {...register("Covishield", {})} /><span>Covishield</span>
                             </label>
-                            <label>Covaxin
-                                <input type="checkbox" placeholder="Covaxin" {...register("Covaxin", {})} />
+                            <label>
+                                <input className="badgeCheckbox" type="checkbox" placeholder="Covaxin" {...register("Covaxin", {})} /><span>Covaxin</span>
                             </label>
-                            <label>Free
-                                <input type="checkbox" placeholder="Free" {...register("Free", {})} />
+                            <label>
+                                <input className="badgeCheckbox" type="checkbox" placeholder="Free" {...register("Free", {})} /><span>Free</span>
                             </label>
-                            <label>Paid
-                                <input type="checkbox" placeholder="Paid" {...register("Paid", {})} />
+                            <label>
+                                <input className="badgeCheckbox" type="checkbox" placeholder="Paid" {...register("Paid", {})} /><span>Paid</span>
                             </label>
                         </div>
                     )
                 }
-
-                <input type="submit" />
 
             </form>
         </div>

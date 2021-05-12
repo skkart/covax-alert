@@ -1,12 +1,20 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useState, useEffect } from 'react';
 import PropTypes from "prop-types";
 import endpoints from './endpoints';
 import axios from 'axios';
+import CenterTable from "./CentersTable";
+import moment from "moment";
+import SlotControlSwitch from './switch';
+import cloneDeep from "lodash/cloneDeep";
+import useAudio from './ChatAudio'
 
-function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18, age_45, paid, free }) {
+function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18, age_45, paid, free, refreshCount }) {
     const [centers, setCenters] = useState([]);
     const [foundResults, setFoundResults] = useState([]);
-
+    const [availableSwitch, setAvailableSwitch] = useState(true);
+    const [currentDate, setCurrentDate] = useState(moment());
+    const [playing, play] = useAudio();
+    
     let vaccine = "";
     if (covaxin && covishield) {
         vaccine = "";
@@ -35,17 +43,11 @@ function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18,
     }
 
     useLayoutEffect(() => {
-        let today = new Date();
-        const dd = String(today.getDate()).padStart(2, '0');
-        const mm = String(today.getMonth() + 1).padStart(2, '0'); //January is 0!
-        const yyyy = today.getFullYear();
-        today = dd + '-' + mm + '-' + yyyy;
+        const todayStr = currentDate.format("DD-MM-YYYY");
         if (searchBy === "PINCODE" && pinCode) {
             async function fetchCentersByPin() {
-                console.log("Fetch state")
-                const pinApiUrl = `${endpoints.cowinApi}/v2/appointment/sessions/public/calendarByPin?pincode=${pinCode}&date=${today}`;
+                const pinApiUrl = `${endpoints.cowinApi}/v2/appointment/sessions/public/calendarByPin?pincode=${pinCode}&date=${todayStr}`;
                 const resp = await axios.get(pinApiUrl);
-                console.log(resp);
                 if (resp.data && resp.data.centers) {
                     setCenters(resp.data.centers);
                 }
@@ -54,10 +56,8 @@ function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18,
             fetchCentersByPin();
         } else if (searchBy === "DISTRICT" && districtCode) {
             async function fetchCentersByDistrict() {
-                console.log("Fetch state")
-                const distApiUrl = `${endpoints.cowinApi}/v2/appointment/sessions/public/calendarByDistrict?district_id=${districtCode}&date=${today}`;
+                const distApiUrl = `${endpoints.cowinApi}/v2/appointment/sessions/public/calendarByDistrict?district_id=${districtCode}&date=${todayStr}`;
                 const resp = await axios.get(distApiUrl);
-                console.log(resp);
                 if (resp.data && resp.data.centers) {
                     setCenters(resp.data.centers);
                 }
@@ -65,7 +65,7 @@ function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18,
             }
             fetchCentersByDistrict();
         }
-    }, [pinCode, districtCode]);
+    }, [pinCode, districtCode, currentDate, refreshCount]);
 
     useLayoutEffect(() => {
         const foundCenters = [];
@@ -74,6 +74,7 @@ function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18,
                 return;
             }
             let isFound = false;
+            const newAvSessions = [];
             center.sessions.forEach(session => {
                 if (vaccine && vaccine !== session.vaccine) {
                     return;
@@ -82,27 +83,36 @@ function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18,
                     return;
                 }
 
-                if (session.available_capacity === 0) {
+                if (session.available_capacity > 0) {
                     isFound = true;
-                    return true;
+                    newAvSessions.push(session);
                 }
             });
             if (isFound) {
-                foundCenters.push(center);
+                const clonedCenter = cloneDeep(center);
+                clonedCenter.sessions = newAvSessions;
+                foundCenters.push(clonedCenter);
             }
         });
+        if (foundCenters.length) {
+            !playing && play();
+        }
         setFoundResults(foundCenters);
         console.log(foundCenters);
 
-    }, [centers, covaxin, covishield, age_18, age_45, paid, free])
+    }, [centers, covaxin, covishield, age_18, age_45, paid, free]);
+
+    const coviCenters = availableSwitch ? foundResults : centers;
 
     return (
         <div className="centers">
-            <ul>
+            {/* <ul>
                 {
                     foundResults && foundResults.map(ctr => <li key={ctr.center_id}>{ctr.name}</li>)
                 }
-            </ul>
+            </ul> */}
+            <SlotControlSwitch availableSwitch={availableSwitch} onSwitch={() => setAvailableSwitch(val => !val)} />
+            <CenterTable centers={coviCenters} availableSwitch={availableSwitch} currentDate={currentDate} />
         </div>
     );
 }
@@ -110,14 +120,15 @@ function Centers({ searchBy, pinCode, districtCode, covaxin, covishield, age_18,
 Centers.propTypes = {
     searchBy: PropTypes.string,
     pinCode: PropTypes.string,
-    districtCode: PropTypes.string,
+    districtCode: PropTypes.number,
     districtName: PropTypes.string,
     paid: PropTypes.bool,
     free: PropTypes.bool,
     covaxin: PropTypes.bool,
     covishield: PropTypes.bool,
     age_18: PropTypes.bool,
-    age_45: PropTypes.bool
+    age_45: PropTypes.bool,
+    refreshCount: PropTypes.number
 }
 
 export default Centers;
